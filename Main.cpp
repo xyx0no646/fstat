@@ -12,13 +12,13 @@ static iTJSDispatch2 *dateClass   = NULL;  // Date のクラスオブジェク�
 static iTJSDispatch2 *dateSetTime = NULL;  // Date.setTime メソッド
 static iTJSDispatch2 *dateGetTime = NULL;  // Date.getTime メソッド
 
-static const tjs_nchar * StoragesFstatPreScript	= TJS_N("¥
-global.FILE_ATTRIBUTE_READONLY = 0x00000001,¥
-global.FILE_ATTRIBUTE_HIDDEN = 0x00000002,¥
-global.FILE_ATTRIBUTE_SYSTEM = 0x00000004,¥
-global.FILE_ATTRIBUTE_DIRECTORY = 0x00000010,¥
-global.FILE_ATTRIBUTE_ARCHIVE = 0x00000020,¥
-global.FILE_ATTRIBUTE_NORMAL = 0x00000080,¥
+static const tjs_nchar * StoragesFstatPreScript	= TJS_N("\
+global.FILE_ATTRIBUTE_READONLY = 0x00000001,\
+global.FILE_ATTRIBUTE_HIDDEN = 0x00000002,\
+global.FILE_ATTRIBUTE_SYSTEM = 0x00000004,\
+global.FILE_ATTRIBUTE_DIRECTORY = 0x00000010,\
+global.FILE_ATTRIBUTE_ARCHIVE = 0x00000020,\
+global.FILE_ATTRIBUTE_NORMAL = 0x00000080,\
 global.FILE_ATTRIBUTE_TEMPORARY = 0x00000100;");
 
 NCB_TYPECONV_CAST_INTEGER(tjs_uint64);
@@ -88,12 +88,12 @@ class StoragesFstat {
 	}
 
 	/**
-	 * パスをローカル化する＆末尾の¥を削除
+	 * パスをローカル化する＆末尾の\を削除
 	 * @param path パス名
 	 */
 	static void getLocalName(ttstr &path) {
 		TVPGetLocalName(path);
-		if (path.GetLastChar() == TJS_W('¥¥')) {
+		if (path.GetLastChar() == TJS_W('\\')) {
 			tjs_int i,len = path.length();
 			tjs_char* tmp = new tjs_char[len];
 			const tjs_char* dp = path.c_str();
@@ -670,7 +670,7 @@ public:
 
 		DWORD	orgattr = GetFileAttributes(filename.c_str());
 
-		return SetFileAttributes(filename.c_str(), orgattr & ‾attr) == TRUE;
+		return SetFileAttributes(filename.c_str(), orgattr & ~attr) == TRUE;
 	}
 
 	/**
@@ -981,7 +981,7 @@ public:
 	/**
 	 * パスの検索
 	 * @param filename   検索対象ファイル名
-	 * @param searchpath 検索対象パス（ローカル表記(c:¥〜等)で";"区切り，省略時はシステムのデフォルト検索パス）
+	 * @param searchpath 検索対象パス（ローカル表記(c:\〜等)で";"区切り，省略時はシステムのデフォルト検索パス）
 	 * @return 見つからなかった場合はvoid，見つかった場合はファイルのフルパス(file://./〜)
 	 */
 	static tjs_error TJS_INTF_METHOD searchPath(tTJSVariant *result,
@@ -1012,7 +1012,7 @@ public:
 		TCHAR crDir[MAX_PATH + 1];
 		GetCurrentDirectory(MAX_PATH + 1 , crDir);
 		ttstr result(crDir);
-		return TVPNormalizeStorageName(result + L"¥¥");
+		return TVPNormalizeStorageName(result + L"\\");
 	}
 	
 	static void setCurrentPath(ttstr path) {
@@ -1062,7 +1062,7 @@ class TemporaryFiles
 public:
 	TemporaryFiles() {};
 
-	‾TemporaryFiles() {
+	~TemporaryFiles() {
 		std::vector<HANDLE>::iterator it = handles.begin();
 		while (it != handles.end()) {
 			HANDLE h = *it;
