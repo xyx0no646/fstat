@@ -16,6 +16,7 @@ ALLSRCFLAGS += $(INCFLAGS) -DGIT_TAG=\"$(GIT_TAG)\"
 CFLAGS += -O2 -flto
 CFLAGS += $(ALLSRCFLAGS) -Wall -Wno-unused-value -Wno-format -DNDEBUG -DWIN32 -D_WIN32 -D_WINDOWS 
 CFLAGS += -D_USRDLL -DMINGW_HAS_SECURE_API -DUNICODE -D_UNICODE -DNO_STRICT
+CFLAGS += -std=gnu++17
 CXXFLAGS += $(CFLAGS) -fpermissive
 WINDRESFLAGS += $(ALLSRCFLAGS) --codepage=65001
 LDFLAGS += -static -static-libstdc++ -static-libgcc -shared -Wl,--kill-at
