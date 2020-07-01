@@ -1,7 +1,9 @@
 #include "ncbind/ncbind.hpp"
+#include "istream_compat.h"
 #include <string>
 #include <vector>
 using namespace std;
+#if 0
 #include <tchar.h>
 #include <shlobj.h>
 #include <ole2.h>
@@ -20,6 +22,14 @@ global.FILE_ATTRIBUTE_DIRECTORY = 0x00000010,\
 global.FILE_ATTRIBUTE_ARCHIVE = 0x00000020,\
 global.FILE_ATTRIBUTE_NORMAL = 0x00000080,\
 global.FILE_ATTRIBUTE_TEMPORARY = 0x00000100;");
+#endif
+
+#ifndef _WIN32
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <dirent.h>
+#include <unistd.h>
+#endif
 
 NCB_TYPECONV_CAST_INTEGER(tjs_uint64);
 
@@ -28,6 +38,7 @@ NCB_TYPECONV_CAST_INTEGER(tjs_uint64);
  * メソッド追加用
  */
 class StoragesFstat {
+#if 0
 	/**
 	 * Win32APIの GetLastErrorのエラーメッセージを返す
 	 * @param message メッセージ格納先
@@ -86,6 +97,7 @@ class StoragesFstat {
 		filetime.dwHighDateTime = (DWORD)((ft >> 32) & 0xFFFFFFFF);
 		return true;
 	}
+#endif
 
 	/**
 	 * パスをローカル化する＆末尾の\を削除
@@ -121,6 +133,7 @@ class StoragesFstat {
 		return r;
 	}
 
+#if 0
 	/**
 	 * ファイルハンドルを取得
 	 * @param filename ファイル名（ローカル名であること）
@@ -223,6 +236,7 @@ class StoragesFstat {
 		TVPThrowExceptionMessage((ttstr(TJS_W("cannot open : ")) + param->GetString()).c_str());
 		return TJS_S_OK;
 	}
+#endif
 public:
 	StoragesFstat(){};
 
@@ -243,7 +257,7 @@ public:
 		if (numparams < 1) return TJS_E_BADPARAMCOUNT;
 
 		ttstr filename = TVPGetPlacedPath(*param[0]);
-		if (filename.length() > 0 && !getLocallyAccessibleName(filename)) {
+		if (filename.length() > 0) {
 			// アーカイブ内ファイル
 			IStream *in = TVPCreateIStream(filename, TJS_BS_READ);
 			if (in) {
@@ -253,7 +267,7 @@ public:
 				if (result) {
 					iTJSDispatch2 *dict;
 					if ((dict = TJSCreateDictionaryObject()) != NULL) {
-						dict->PropSet(TJS_MEMBERENSURE, L"size",  NULL, &size, dict);
+						dict->PropSet(TJS_MEMBERENSURE, TJS_W("size"),  NULL, &size, dict);
 						*result = dict;
 						dict->Release();
 					}
@@ -262,8 +276,14 @@ public:
 				return TJS_S_OK;
 			}
 		}
+#if 0
 		return _getTime(result, param[0], true);
+#endif
+		TVPThrowExceptionMessage((ttstr(TJS_W("cannot open : ")) + filename).c_str());
+		return TJS_S_OK;
 	}
+
+#if 0
 	/**
 	 * 指定されたファイルのタイムスタンプ情報を取得する（アーカイブ内不可）
 	 * @param filename ファイル名
@@ -335,6 +355,7 @@ public:
 		CloseHandle(hFile);
 		return rs;
 	}
+#endif
 
 	/**
 	 * 吉里吉里のストレージ空間中のファイルを抽出する
@@ -369,20 +390,18 @@ public:
 	 * 実ファイルがある場合のみ削除されます
 	 */
 	static bool deleteFile(const tjs_char *file) {
-		BOOL r = false;
+		bool r = false;
 		ttstr filename(TVPGetLocallyAccessibleName(TVPGetPlacedPath(file)));
 		if (filename.length()) {
-			r	= DeleteFile(filename.c_str());
-			if (r == FALSE) {
-				ttstr mes;
-				getLastError(mes);
-				TVPAddLog(ttstr(TJS_W("deleteFile : ")) + filename + TJS_W(" : ") + mes);
-			} else {
-				// 削除に成功した場合はストレージキャッシュをクリア
+			std::string nfilename;
+			TVPUtf16ToUtf8( nfilename, filename.AsStdString() );
+			r = remove(nfilename.c_str()) == 0;
+			if (r)
+			{
 				TVPClearStorageCaches();
 			}
 		}
-		return !! r;
+		return r;
 	}
 
 	/**
@@ -393,25 +412,14 @@ public:
 	 * 実ファイルがある場合のみ処理されます
 	 */
 	static bool truncateFile(const tjs_char *file, tjs_int size) {
-		BOOL r = false;
+		bool r = false;
 		ttstr filename(TVPGetLocallyAccessibleName(TVPGetPlacedPath(file)));
 		if (filename.length()) {
-			HANDLE hFile = _getFileHandle(filename, true);
-			if (hFile != INVALID_HANDLE_VALUE) {
-				LARGE_INTEGER ofs;
-				ofs.QuadPart = size;
-				if (SetFilePointerEx(hFile, ofs, NULL, FILE_BEGIN) &&
-					SetEndOfFile(hFile)) {
-					r = true;
-				} else {
-					ttstr mes;
-					getLastError(mes);
-					TVPAddLog(ttstr(TJS_W("truncateFile : ")) + filename + TJS_W(" : ") + mes);
-				}
-				CloseHandle(hFile);
-			}
+			std::string nfilename;
+			TVPUtf16ToUtf8( nfilename, filename.AsStdString() );
+			r = truncate(nfilename.c_str(), size) == 0;
 		}
-		return !! r;
+		return r;
 	}
 	
 	/**
@@ -422,23 +430,26 @@ public:
 	 * 移動対象ファイルが実在し、移動先パスにファイルが無い場合のみ移動されます
 	 */
 	static bool moveFile(const tjs_char *from, const tjs_char *to) {
-		BOOL r = false;
+		bool r = false;
 		ttstr fromFile(TVPGetLocallyAccessibleName(from));
 		ttstr   toFile(TVPGetLocallyAccessibleName(to));
 		if (fromFile.length()
-			&& toFile.length()) {
-			r	= MoveFile(fromFile.c_str(), toFile.c_str());
-			if (r == FALSE) {
-				ttstr mes;
-				getLastError(mes);
-				TVPAddLog(ttstr(TJS_W("moveFile : ")) + fromFile + ", " + toFile + TJS_W(" : ") + mes);
-			} else {
+			&& toFile.length())
+		{
+			std::string nfromFile;
+			std::string   ntoFile;
+			TVPUtf16ToUtf8( nfromFile, fromFile.AsStdString() );
+			TVPUtf16ToUtf8( ntoFile, toFile.AsStdString() );
+			r = rename(nfromFile.c_str(), ntoFile.c_str()) == 0;
+			if (r)
+			{
 				TVPClearStorageCaches();
 			}
 		}
-		return !! r;
+		return r;
 	}
 
+#if 0
 	/**
 	 * 指定ディレクトリのファイル一覧を取得する
 	 * @param dir ディレクトリ名
@@ -462,7 +473,8 @@ public:
 	typedef bool (*DirListCallback)(iTJSDispatch2 *array, tjs_int count, ttstr const &file, WIN32_FIND_DATA const *data);
 private:
 	static tTJSVariant _dirlist(ttstr dir, DirListCallback cb)
-	{
+#endif
+	static tTJSVariant dirlist(ttstr dir) {
 		// OSネイティブな表現に変換
 		dir = TVPNormalizeStorageName(dir);
 		if (dir.GetLastChar() != TJS_W('/')) {
@@ -474,33 +486,49 @@ private:
 		iTJSDispatch2 * array = TJSCreateArrayObject();
 		tTJSVariant result;
 
-		try {
-			ttstr wildcard = dir + "*.*";
-			WIN32_FIND_DATA data;
-			HANDLE handle = FindFirstFile(wildcard.c_str(), &data);
-			if (handle != INVALID_HANDLE_VALUE) {
-				tjs_int count = 0;
-				do {
-					ttstr file = data.cFileName;
-					if (data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
-						// ディレクトリの場合は最後に / をつける
-						file += "/";
+		tjs_string wname(dir.AsStdString());
+		std::string nname;
+		tjs_int icount = 0;
+		if( TVPUtf16ToUtf8(nname, wname) ) {
+			DIR* dr;
+			if( ( dr = opendir(nname.c_str()) ) != nullptr ) {
+				struct dirent* entry;
+				while( ( entry = readdir( dr ) ) != nullptr ) {
+					if( entry->d_type == DT_REG ) {
+						tjs_char fname[256];
+						tjs_int count = TVPUtf8ToWideCharString( entry->d_name, fname );
+						fname[count] = TJS_W('\0');
+						tTJSVariant val = ttstr(fname);
+						array->PropSetByNum(TJS_MEMBERENSURE, icount, &val, array);
+						icount += 1;
 					}
-					if ((*cb)(array, count, file, &data)) count++;
-				} while(FindNextFile(handle, &data));
-				FindClose(handle);
-			} else {
+					else if( entry->d_type == DT_DIR )
+					{
+						tjs_char fname[256];
+						tjs_int count = TVPUtf8ToWideCharString( entry->d_name, fname );
+						fname[count] = TJS_W('\0');
+						ttstr ttname(fname);
+						ttname += TJS_W("/");
+						tTJSVariant val = ttname;
+						array->PropSetByNum(TJS_MEMBERENSURE, icount, &val, array);
+						icount += 1;
+					}
+					// entry->d_type == DT_UNKNOWN
+				}
+				closedir( dr );
+			}
+			else {
+				array->Release();
 				TVPThrowExceptionMessage(TJS_W("Directory not found."));
 			}
 			result = tTJSVariant(array, array);
 			array->Release();
-		} catch(...) {
-			array->Release();
-			throw;
 		}
 
 		return result;
 	}
+
+#if 0
 	static bool setDirListFile(iTJSDispatch2 *array, tjs_int count, ttstr const &file, WIN32_FIND_DATA const *data) {
 		// [dirlist] 配列に追加する
 		tTJSVariant val(file);
@@ -542,6 +570,7 @@ private:
 		}
 		return true;
 	}
+#endif
 
 public:
 
@@ -561,13 +590,12 @@ public:
 		dir = TVPNormalizeStorageName(dir);
 		TVPGetLocalName(dir);
 
-		BOOL	r = RemoveDirectory(dir.c_str());
-		if(r == FALSE) {
-			ttstr mes;
-			getLastError(mes);
-			TVPAddLog(ttstr(TJS_W("removeDirectory : ")) + dir + TJS_W(" : ") + mes);
+		std::string ndir;
+		if ( TVPUtf16ToUtf8( ndir, dir.AsStdString() ) )
+		{
+			return 0 == rmdir(ndir.c_str());
 		}
-		return !! r;
+		return false;
 	}
 
 	/**
@@ -583,13 +611,7 @@ public:
 		}
 		dir	= TVPNormalizeStorageName(dir);
 		TVPGetLocalName(dir);
-		BOOL	r = CreateDirectory(dir.c_str(), NULL);
-		if (r == FALSE) {
-			ttstr mes;
-			getLastError(mes);
-			TVPAddLog(ttstr(TJS_W("createDirectory : ")) + dir + TJS_W(" : ") + mes);
-		}
-		return !! r;
+		return TVPCreateFolders(dir);
 	}
 
 	/**
@@ -604,15 +626,10 @@ public:
 			TVPThrowExceptionMessage(TJS_W("'/' must be specified at the end of given directory name."));
 		}
 		TVPGetLocalName(dir);
-		BOOL	r = CreateDirectory(dir.c_str(), NULL);
-		if (r == FALSE) {
-			ttstr mes;
-			getLastError(mes);
-			TVPAddLog(ttstr(TJS_W("createDirectory : ")) + dir + TJS_W(" : ") + mes);
-		}
-		return !! r;
+		return TVPCreateFolders(dir);
 	}
 
+#if 0
 	/**
 	 * カレントディレクトリの変更
 	 * @param dir ディレクトリ名
@@ -785,6 +802,7 @@ public:
 
 		return TJS_S_OK;
 	}
+#endif
 
 	/**
 	 * ディレクトリの存在チェック
@@ -799,24 +817,10 @@ public:
 		}
 		dir	= TVPNormalizeStorageName(dir);
 		TVPGetLocalName(dir);
-		DWORD	attr = GetFileAttributes(dir.c_str());
-#if 0
-		if(attr == 0xFFFFFFFF)
-			return -1;	//	存在しない
-		else if((attr & FILE_ATTRIBUTE_DIRECTORY) == FILE_ATTRIBUTE_DIRECTORY)
-			return true;	//	存在する
-		else
-			return false;	//	ディレクトリではない
-#else
-		if(attr == 0xFFFFFFFF)
-			return false;	//	存在しない
-		else if((attr & FILE_ATTRIBUTE_DIRECTORY) == FILE_ATTRIBUTE_DIRECTORY)
-			return true;	//	存在する
-		else
-			return false;	//	ディレクトリではない
-#endif
+		return TVPCheckExistentLocalFolder(dir);
 	}
 
+#if 0
 	/**
 	 * 吉里吉里のストレージ空間中の指定ファイルをコピーする
 	 * @param from コピー元ファイル
@@ -863,6 +867,7 @@ public:
 		}
 		return false;
 	}
+#endif
 
 	/**
 	 * パスの正規化を行なわず、autoPathからの検索も行なわずに
@@ -875,6 +880,7 @@ public:
 		return TVPIsExistentStorageNoSearchNoNormalize(filename);
 	}
 
+#if 0
 	/**
 	 * 表示名取得
 	 * @param fileame ファイルパス
@@ -939,6 +945,7 @@ private:
 		}
 		return 0;
 	}
+#endif
 
 public:
 	/**
@@ -968,7 +975,8 @@ public:
 
 		TVP_md5_finish(&st, buffer);
 
-		tjs_char ret[32+1], *hex = TJS_W("0123456789abcdef");
+		tjs_char ret[32+1];
+		const tjs_char *hex = TJS_W("0123456789abcdef");
 		for (tjs_int i=0; i<16; i++) {
 			ret[i*2  ] = hex[(buffer[i] >> 4) & 0xF];
 			ret[i*2+1] = hex[(buffer[i]     ) & 0xF];
@@ -978,6 +986,7 @@ public:
 		return TJS_S_OK;
 	}
 
+#if 0
 	/**
 	 * パスの検索
 	 * @param filename   検索対象ファイル名
@@ -1022,40 +1031,54 @@ public:
 			TVPThrowExceptionMessage(TJS_W("setCurrentPath failed:%1"), mes);
 		}
 	}
+#endif
 };
 
 NCB_ATTACH_CLASS(StoragesFstat, Storages) {
 	NCB_METHOD(clearStorageCaches);
 	RawCallback("fstat",               &Class::fstat,               TJS_STATICMEMBER);
+#if 0
 	RawCallback("getTime",             &Class::getTime,             TJS_STATICMEMBER);
 	RawCallback("setTime",             &Class::setTime,             TJS_STATICMEMBER);
 	NCB_METHOD(getLastModifiedFileTime);
 	NCB_METHOD(setLastModifiedFileTime);
+#endif
 	NCB_METHOD(exportFile);
 	NCB_METHOD(deleteFile);
 	NCB_METHOD(truncateFile);
 	NCB_METHOD(moveFile);
 	NCB_METHOD(dirlist);
+#if 0
 	NCB_METHOD(dirlistEx);
+#endif
 	NCB_METHOD(removeDirectory);
 	NCB_METHOD(createDirectory);
 	NCB_METHOD(createDirectoryNoNormalize);
+#if 0
 	NCB_METHOD(changeDirectory);
 	NCB_METHOD(setFileAttributes);
 	NCB_METHOD(resetFileAttributes);
 	NCB_METHOD(getFileAttributes);
 	RawCallback("selectDirectory",     &Class::selectDirectory,     TJS_STATICMEMBER);
+#endif
 	NCB_METHOD(isExistentDirectory);
+#if 0
 	NCB_METHOD(copyFile);
 	NCB_METHOD(copyFileNoNormalize);
+#endif
 	NCB_METHOD(isExistentStorageNoSearchNoNormalize);
+#if 0
 	NCB_METHOD(getDisplayName);
+#endif
 	RawCallback("getMD5HashString",    &Class::getMD5HashString,    TJS_STATICMEMBER);
+#if 0
 	RawCallback("searchPath",          &Class::searchPath,          TJS_STATICMEMBER);
 	Property("currentPath", &Class::getCurrentPath, &Class::setCurrentPath);
+#endif
 	Method(TJS_W("getTemporaryName"), &TVPGetTemporaryName);
 };
 
+#if 0
 // テンポラリファイル処理用クラス
 class TemporaryFiles
 {
@@ -1134,3 +1157,4 @@ static void PreUnregistCallback()
 
 NCB_POST_REGIST_CALLBACK(PostRegistCallback);
 NCB_PRE_UNREGIST_CALLBACK(PreUnregistCallback);
+#endif
