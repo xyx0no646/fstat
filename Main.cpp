@@ -31,7 +31,9 @@ global.FILE_ATTRIBUTE_TEMPORARY = 0x00000100;");
 #include <unistd.h>
 #endif
 
+#if 0
 NCB_TYPECONV_CAST_INTEGER(tjs_uint64);
+#endif
 
 
 /**
