@@ -492,22 +492,51 @@ private:
 		std::string nname;
 		tjs_int icount = 0;
 		if( TVPUtf16ToUtf8(nname, wname) ) {
+#if defined(__vita__)
+			SceUID dr;
+			if( ( dr = sceIoDopen(nname.c_str()) ) >= 0 )
+#else
 			DIR* dr;
-			if( ( dr = opendir(nname.c_str()) ) != nullptr ) {
+			if( ( dr = opendir(nname.c_str()) ) != nullptr )
+#endif
+			{
+#if defined(__vita__)
+				SceIoDirent entry;
+				while( sceIoDread( dr, &entry ) > 0 )
+#else
 				struct dirent* entry;
-				while( ( entry = readdir( dr ) ) != nullptr ) {
-					if( entry->d_type == DT_REG ) {
+				while( ( entry = readdir( dr ) ) != nullptr )
+#endif
+				{
+#if defined(__vita__)
+					if (SCE_STM_ISREG(entry.d_stat.st_mode))
+#else
+					if( entry->d_type == DT_REG )
+#endif
+					{
 						tjs_char fname[256];
+#if defined(__vita__)
+						tjs_int count = TVPUtf8ToWideCharString( entry.d_name, fname );
+#else
 						tjs_int count = TVPUtf8ToWideCharString( entry->d_name, fname );
+#endif
 						fname[count] = TJS_W('\0');
 						tTJSVariant val = ttstr(fname);
 						array->PropSetByNum(TJS_MEMBERENSURE, icount, &val, array);
 						icount += 1;
 					}
+#if defined(__vita__)
+					if (SCE_STM_ISDIR(entry.d_stat.st_mode))
+#else
 					else if( entry->d_type == DT_DIR )
+#endif
 					{
 						tjs_char fname[256];
+#if defined(__vita__)
+						tjs_int count = TVPUtf8ToWideCharString( entry.d_name, fname );
+#else
 						tjs_int count = TVPUtf8ToWideCharString( entry->d_name, fname );
+#endif
 						fname[count] = TJS_W('\0');
 						ttstr ttname(fname);
 						ttname += TJS_W("/");
@@ -517,7 +546,11 @@ private:
 					}
 					// entry->d_type == DT_UNKNOWN
 				}
+#if defined(__vita__)
+				sceIoDclose( dr );
+#else
 				closedir( dr );
+#endif
 			}
 			else {
 				array->Release();
@@ -595,7 +628,11 @@ public:
 		std::string ndir;
 		if ( TVPUtf16ToUtf8( ndir, dir.AsStdString() ) )
 		{
+#if defined(__vita__)
+			return 0 == sceIoRmdir(ndir.c_str());
+#else
 			return 0 == rmdir(ndir.c_str());
+#endif
 		}
 		return false;
 	}
