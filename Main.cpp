@@ -27,6 +27,7 @@ global.FILE_ATTRIBUTE_TEMPORARY = 0x00000100;");
 #ifndef _WIN32
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <dirent.h>
 #include <unistd.h>
 #endif
@@ -325,39 +326,40 @@ public:
 
 		return TJS_S_OK;
 	}
+#endif
 
 	/**
 	 * 更新日時取得・設定（Dateを経由しない高速版）
 	 * @param target 対象
 	 * @param time 時間（64bit FILETIME数）
 	 */
-	static tjs_uint64 getLastModifiedFileTime(ttstr target) {
-		ttstr filename = TVPNormalizeStorageName(target);
-		getLocalName(filename);
-		HANDLE hFile = _getFileHandle(filename, false);
-		FILETIME ft;
-		if (hFile == INVALID_HANDLE_VALUE) return 0;
-		bool rs = !! GetFileTime(hFile, 0, 0, &ft);
-		CloseHandle(hFile);
-		if (!rs) return 0;
-		tjs_uint64 ret = ft.dwHighDateTime;
-		ret <<= 32;
-		ret |= ft.dwLowDateTime;
-		return ret;
+	static tTVInteger getLastModifiedFileTime(ttstr target) {
+		ttstr filename(TVPGetLocallyAccessibleName(TVPGetPlacedPath(target)));
+		if (filename.length()) {
+			std::string nfilename;
+			TVPUtf16ToUtf8( nfilename, filename.AsStdString() );
+			struct stat file_stat;
+			if (lstat(nfilename.c_str(), &file_stat) == 0)
+			{
+				return (tTVInteger)file_stat.st_mtime;
+			}
+		}
+		return 0;
 	}
-	static bool setLastModifiedFileTime(ttstr target, tjs_uint64 time) {
-		ttstr filename = TVPNormalizeStorageName(target);
-		getLocalName(filename);
-		HANDLE hFile = _getFileHandle(filename, true);
-		if (hFile == INVALID_HANDLE_VALUE) return false;
-		FILETIME ft;
-		ft.dwHighDateTime = (time >> 32) & 0xFFFFFFFF;
-		ft.dwLowDateTime  =  time        & 0xFFFFFFFF;
-		bool rs = !! SetFileTime(hFile, 0, 0, &ft);
-		CloseHandle(hFile);
-		return rs;
+	static bool setLastModifiedFileTime(ttstr target, tTVInteger time) {
+		bool r = false;
+		ttstr filename(TVPGetLocallyAccessibleName(TVPGetPlacedPath(target)));
+		if (filename.length()) {
+			std::string nfilename;
+			TVPUtf16ToUtf8( nfilename, filename.AsStdString() );
+			struct timeval times[2];
+			memset(&times, 0, sizeof(times));
+			times[0].tv_sec = time;
+			times[1].tv_sec = time;
+			r = utimes(nfilename.c_str(), times) == 0;
+		}
+		return r;
 	}
-#endif
 
 	/**
 	 * 吉里吉里のストレージ空間中のファイルを抽出する
@@ -1079,9 +1081,9 @@ NCB_ATTACH_CLASS(StoragesFstat, Storages) {
 #if 0
 	RawCallback("getTime",             &Class::getTime,             TJS_STATICMEMBER);
 	RawCallback("setTime",             &Class::setTime,             TJS_STATICMEMBER);
+#endif
 	NCB_METHOD(getLastModifiedFileTime);
 	NCB_METHOD(setLastModifiedFileTime);
-#endif
 	NCB_METHOD(exportFile);
 	NCB_METHOD(deleteFile);
 	NCB_METHOD(truncateFile);
