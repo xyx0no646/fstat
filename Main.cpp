@@ -32,6 +32,10 @@ global.FILE_ATTRIBUTE_TEMPORARY = 0x00000100;");
 #include <unistd.h>
 #endif
 
+#ifdef __vita__
+#include <psp2/rtc.h>
+#endif
+
 #if 0
 NCB_TYPECONV_CAST_INTEGER(tjs_uint64);
 #endif
@@ -338,11 +342,21 @@ public:
 		if (filename.length()) {
 			std::string nfilename;
 			TVPUtf16ToUtf8( nfilename, filename.AsStdString() );
+#if defined(__vita__)
+			SceIoStat file_stat;
+			if (sceIoGetstat(nfilename.c_str(), &file_stat) >= 0)
+			{
+				SceUInt64 ret = 0;
+				sceRtcGetTime64_t(&(file_stat.st_mtime), &ret);
+				return (tTVInteger)ret;
+			}
+#else
 			struct stat file_stat;
 			if (lstat(nfilename.c_str(), &file_stat) == 0)
 			{
 				return (tTVInteger)file_stat.st_mtime;
 			}
+#endif
 		}
 		return 0;
 	}
@@ -352,11 +366,24 @@ public:
 		if (filename.length()) {
 			std::string nfilename;
 			TVPUtf16ToUtf8( nfilename, filename.AsStdString() );
+#if defined(__vita__)
+			SceIoStat file_stat;
+			if (sceIoGetstat(nfilename.c_str(), &file_stat) >= 0)
+			{
+				sceRtcSetTime64_t(&(file_stat.st_atime), time);
+				sceRtcSetTime64_t(&(file_stat.st_mtime), time);
+				if (sceIoChstat(nfilename.c_str(), &file_stat, SCE_CST_MT | SCE_CST_AT) >= 0)
+				{
+					r = true;
+				}
+			}
+#else
 			struct timeval times[2];
 			memset(&times, 0, sizeof(times));
 			times[0].tv_sec = time;
 			times[1].tv_sec = time;
 			r = utimes(nfilename.c_str(), times) == 0;
+#endif
 		}
 		return r;
 	}
