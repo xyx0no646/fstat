@@ -538,7 +538,7 @@ private:
 #endif
 				{
 #if defined(__vita__)
-					if (SCE_STM_ISREG(entry.d_stat.st_mode))
+					if (SCE_S_ISREG(entry.d_stat.st_mode))
 #else
 					if( entry->d_type == DT_REG )
 #endif
@@ -555,7 +555,7 @@ private:
 						icount += 1;
 					}
 #if defined(__vita__)
-					if (SCE_STM_ISDIR(entry.d_stat.st_mode))
+					if (SCE_S_ISDIR(entry.d_stat.st_mode))
 #else
 					else if( entry->d_type == DT_DIR )
 #endif
