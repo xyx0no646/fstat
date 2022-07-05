@@ -34,6 +34,7 @@ global.FILE_ATTRIBUTE_TEMPORARY = 0x00000100;");
 
 #ifdef __vita__
 #include <psp2/rtc.h>
+#include <psp2/io/stat.h>
 #endif
 
 #if 0
