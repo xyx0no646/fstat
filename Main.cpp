@@ -36,11 +36,6 @@ global.FILE_ATTRIBUTE_TEMPORARY = 0x00000100;");
 #include <unistd.h>
 #endif
 
-#ifdef __vita__
-#include <psp2/rtc.h>
-#include <psp2/io/stat.h>
-#endif
-
 #if 0
 NCB_TYPECONV_CAST_INTEGER(tjs_uint64);
 #endif
@@ -365,21 +360,11 @@ public:
 		if (filename.length()) {
 			std::string nfilename;
 			TVPUtf16ToUtf8( nfilename, filename.AsStdString() );
-#if defined(__vita__)
-			SceIoStat file_stat;
-			if (sceIoGetstat(nfilename.c_str(), &file_stat) >= 0)
-			{
-				SceUInt64 ret = 0;
-				sceRtcGetTime64_t(&(file_stat.st_mtime), &ret);
-				return (tTVInteger)ret;
-			}
-#else
 			struct stat file_stat;
 			if (lstat(nfilename.c_str(), &file_stat) == 0)
 			{
 				return (tTVInteger)file_stat.st_mtime;
 			}
-#endif
 		}
 		return 0;
 #endif
@@ -402,24 +387,11 @@ public:
 		if (filename.length()) {
 			std::string nfilename;
 			TVPUtf16ToUtf8( nfilename, filename.AsStdString() );
-#if defined(__vita__)
-			SceIoStat file_stat;
-			if (sceIoGetstat(nfilename.c_str(), &file_stat) >= 0)
-			{
-				sceRtcSetTime64_t(&(file_stat.st_atime), time);
-				sceRtcSetTime64_t(&(file_stat.st_mtime), time);
-				if (sceIoChstat(nfilename.c_str(), &file_stat, SCE_CST_MT | SCE_CST_AT) >= 0)
-				{
-					r = true;
-				}
-			}
-#else
 			struct timeval times[2];
 			memset(&times, 0, sizeof(times));
 			times[0].tv_sec = time;
 			times[1].tv_sec = time;
 			r = utimes(nfilename.c_str(), times) == 0;
-#endif
 		}
 		return r;
 #endif
@@ -655,51 +627,33 @@ private:
 		std::string nname;
 		tjs_int icount = 0;
 		if( TVPUtf16ToUtf8(nname, wname) ) {
-#if defined(__vita__)
-			SceUID dr;
-			if( ( dr = sceIoDopen(nname.c_str()) ) >= 0 )
-#else
 			DIR* dr;
 			if( ( dr = opendir(nname.c_str()) ) != nullptr )
-#endif
 			{
-#if defined(__vita__)
-				SceIoDirent entry;
-				while( sceIoDread( dr, &entry ) > 0 )
-#else
 				struct dirent* entry;
 				while( ( entry = readdir( dr ) ) != nullptr )
-#endif
 				{
 #if defined(__vita__)
-					if (SCE_S_ISREG(entry.d_stat.st_mode))
+					if (SCE_S_ISREG(entry->d_stat.st_mode))
 #else
 					if( entry->d_type == DT_REG )
 #endif
 					{
 						tjs_char fname[256];
-#if defined(__vita__)
-						tjs_int count = TVPUtf8ToWideCharString( entry.d_name, fname );
-#else
 						tjs_int count = TVPUtf8ToWideCharString( entry->d_name, fname );
-#endif
 						fname[count] = TJS_W('\0');
 						tTJSVariant val = ttstr(fname);
 						array->PropSetByNum(TJS_MEMBERENSURE, icount, &val, array);
 						icount += 1;
 					}
 #if defined(__vita__)
-					if (SCE_S_ISDIR(entry.d_stat.st_mode))
+					if (SCE_S_ISDIR(entry->d_stat.st_mode))
 #else
 					else if( entry->d_type == DT_DIR )
 #endif
 					{
 						tjs_char fname[256];
-#if defined(__vita__)
-						tjs_int count = TVPUtf8ToWideCharString( entry.d_name, fname );
-#else
 						tjs_int count = TVPUtf8ToWideCharString( entry->d_name, fname );
-#endif
 						fname[count] = TJS_W('\0');
 						ttstr ttname(fname);
 						ttname += TJS_W("/");
@@ -709,11 +663,7 @@ private:
 					}
 					// entry->d_type == DT_UNKNOWN
 				}
-#if defined(__vita__)
-				sceIoDclose( dr );
-#else
 				closedir( dr );
-#endif
 			}
 			else {
 				array->Release();
@@ -808,11 +758,7 @@ public:
 		std::string ndir;
 		if ( TVPUtf16ToUtf8( ndir, dir.AsStdString() ) )
 		{
-#if defined(__vita__)
-			return 0 == sceIoRmdir(ndir.c_str());
-#else
 			return 0 == rmdir(ndir.c_str());
-#endif
 		}
 		return false;
 #endif
