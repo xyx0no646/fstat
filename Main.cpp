@@ -39,6 +39,7 @@ global.FILE_ATTRIBUTE_TEMPORARY = 0x00000100;");
 #ifdef __vita__
 #include <psp2/rtc.h>
 #include <psp2/io/stat.h>
+#include <psp2/io/fcntl.h>
 #endif
 
 #if 0
@@ -479,7 +480,11 @@ public:
 		if (filename.length()) {
 			std::string nfilename;
 			TVPUtf16ToUtf8( nfilename, filename.AsStdString() );
+#if defined(__vita__)
+			r = sceIoRemove(nfilename.c_str()) == 0;
+#else
 			r = remove(nfilename.c_str()) == 0;
+#endif
 			if (r)
 			{
 				TVPClearStorageCaches();
@@ -564,7 +569,11 @@ public:
 			std::string   ntoFile;
 			TVPUtf16ToUtf8( nfromFile, fromFile.AsStdString() );
 			TVPUtf16ToUtf8( ntoFile, toFile.AsStdString() );
+#if defined(__vita__)
+			r = sceIoRename(nfromFile.c_str(), ntoFile.c_str()) == 0;
+#else
 			r = rename(nfromFile.c_str(), ntoFile.c_str()) == 0;
+#endif
 			if (r)
 			{
 				TVPClearStorageCaches();
