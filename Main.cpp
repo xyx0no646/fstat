@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 using namespace std;
-#if 0
+#ifdef _WIN32
 #include <tchar.h>
 #include <shlobj.h>
 #include <ole2.h>
@@ -17,7 +17,6 @@ static iTJSDispatch2 *dateClass   = NULL;  // Date のクラスオブジェク�
 static iTJSDispatch2 *dateSetTime = NULL;  // Date.setTime メソッド
 static iTJSDispatch2 *dateGetTime = NULL;  // Date.getTime メソッド
 
-#if 0
 static const tjs_nchar * StoragesFstatPreScript	= TJS_N("\
 global.FILE_ATTRIBUTE_READONLY = 0x00000001,\
 global.FILE_ATTRIBUTE_HIDDEN = 0x00000002,\
@@ -26,7 +25,6 @@ global.FILE_ATTRIBUTE_DIRECTORY = 0x00000010,\
 global.FILE_ATTRIBUTE_ARCHIVE = 0x00000020,\
 global.FILE_ATTRIBUTE_NORMAL = 0x00000080,\
 global.FILE_ATTRIBUTE_TEMPORARY = 0x00000100;");
-#endif
 
 #ifndef _WIN32
 #include <sys/types.h>
@@ -90,8 +88,6 @@ class StoragesFstat {
 			}
 		}
 	}
-#endif
-#if 0
 	/**
 	 * Date クラスの時刻をファイル時刻に変換
 	 * @param restore  参照先（Dateクラスインスタンス）
@@ -170,8 +166,6 @@ class StoragesFstat {
 		}
 		return hFile;
 	}
-#endif
-#if 0
 	/**
 	 * ファイルのタイムスタンプを取得する
 	 * @param filename ファイル名（ローカル名であること）
@@ -274,7 +268,12 @@ public:
 		if (numparams < 1) return TJS_E_BADPARAMCOUNT;
 
 		ttstr filename = TVPGetPlacedPath(*param[0]);
-		if (filename.length() > 0) {
+#ifdef _WIN32
+		if (filename.length() > 0 && !getLocallyAccessibleName(filename))
+#else
+		if (filename.length() > 0)
+#endif
+		{
 			// アーカイブ内ファイル
 			IStream *in = TVPCreateIStream(filename, TJS_BS_READ);
 			if (in) {
@@ -293,14 +292,15 @@ public:
 				return TJS_S_OK;
 			}
 		}
-#if 0
+#ifdef _WIN32
 		return _getTime(result, param[0], true);
-#endif
+#else
 		TVPThrowExceptionMessage((ttstr(TJS_W("cannot open : ")) + filename).c_str());
 		return TJS_S_OK;
+#endif
 	}
 
-#if 0
+#ifdef _WIN32
 	/**
 	 * 指定されたファイルのタイムスタンプ情報を取得する（アーカイブ内不可）
 	 * @param filename ファイル名
@@ -789,6 +789,7 @@ public:
 	 * 中にファイルが無い場合のみ削除されます
 	 */
 	static bool removeDirectory(ttstr dir) {
+
 #ifdef _WIN32
 		if (dir.GetLastChar() != TJS_W('/')) {
 			TVPThrowExceptionMessage(TJS_W("'/' must be specified at the end of given directory name."));
@@ -889,7 +890,7 @@ public:
 #endif
 	}
 
-#if 0
+#ifdef _WIN32
 	/**
 	 * カレントディレクトリの変更
 	 * @param dir ディレクトリ名
@@ -998,7 +999,11 @@ public:
 				if(TJS_SUCCEEDED(tmp->PropGet(0, L"HWND", NULL, &val, tmp)))
 					owner	= (HWND)val.AsInteger();
 			}
+#if 0
 			bi.hwndOwner	= owner != NULL ? owner : TVPGetApplicationWindowHandle();
+#else
+			bi.hwndOwner	= owner;
+#endif
 		}
 		else
 			bi.hwndOwner	= NULL;
@@ -1105,7 +1110,7 @@ public:
 #endif
 	}
 
-#if 0
+#ifdef _WIN32
 	/**
 	 * 吉里吉里のストレージ空間中の指定ファイルをコピーする
 	 * @param from コピー元ファイル
@@ -1165,7 +1170,7 @@ public:
 		return TVPIsExistentStorageNoSearchNoNormalize(filename);
 	}
 
-#if 0
+#ifdef _WIN32
 	/**
 	 * 表示名取得
 	 * @param fileame ファイルパス
@@ -1271,7 +1276,7 @@ public:
 		return TJS_S_OK;
 	}
 
-#if 0
+#ifdef _WIN32
 	/**
 	 * パスの検索
 	 * @param filename   検索対象ファイル名
@@ -1322,7 +1327,7 @@ public:
 NCB_ATTACH_CLASS(StoragesFstat, Storages) {
 	NCB_METHOD(clearStorageCaches);
 	RawCallback("fstat",               &Class::fstat,               TJS_STATICMEMBER);
-#if 0
+#ifdef _WIN32
 	RawCallback("getTime",             &Class::getTime,             TJS_STATICMEMBER);
 	RawCallback("setTime",             &Class::setTime,             TJS_STATICMEMBER);
 #endif
@@ -1333,13 +1338,13 @@ NCB_ATTACH_CLASS(StoragesFstat, Storages) {
 	NCB_METHOD(truncateFile);
 	NCB_METHOD(moveFile);
 	NCB_METHOD(dirlist);
-#if 0
+#ifdef _WIN32
 	NCB_METHOD(dirlistEx);
 #endif
 	NCB_METHOD(removeDirectory);
 	NCB_METHOD(createDirectory);
 	NCB_METHOD(createDirectoryNoNormalize);
-#if 0
+#ifdef _WIN32
 	NCB_METHOD(changeDirectory);
 	NCB_METHOD(setFileAttributes);
 	NCB_METHOD(resetFileAttributes);
@@ -1347,23 +1352,23 @@ NCB_ATTACH_CLASS(StoragesFstat, Storages) {
 	RawCallback("selectDirectory",     &Class::selectDirectory,     TJS_STATICMEMBER);
 #endif
 	NCB_METHOD(isExistentDirectory);
-#if 0
+#ifdef _WIN32
 	NCB_METHOD(copyFile);
 	NCB_METHOD(copyFileNoNormalize);
 #endif
 	NCB_METHOD(isExistentStorageNoSearchNoNormalize);
-#if 0
+#ifdef _WIN32
 	NCB_METHOD(getDisplayName);
 #endif
 	RawCallback("getMD5HashString",    &Class::getMD5HashString,    TJS_STATICMEMBER);
-#if 0
+#ifdef _WIN32
 	RawCallback("searchPath",          &Class::searchPath,          TJS_STATICMEMBER);
 	Property("currentPath", &Class::getCurrentPath, &Class::setCurrentPath);
 #endif
 	Method(TJS_W("getTemporaryName"), &TVPGetTemporaryName);
 };
 
-#if 0
+#ifdef _WIN32
 // テンポラリファイル処理用クラス
 class TemporaryFiles
 {
@@ -1424,12 +1429,10 @@ static void PostRegistCallback()
 	TVPExecuteExpression(TJS_W("Date.setTime"), &var);
 	dateSetTime = var.AsObject();
 	var.Clear();
-#if 0
 	TVPExecuteExpression(TJS_W("Date.getTime"), &var);
 	dateGetTime = var.AsObject();
 	var.Clear();
 	TVPExecuteExpression(StoragesFstatPreScript);
-#endif
 }
 
 #define RELEASE(name) name->Release();name= NULL
