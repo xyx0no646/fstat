@@ -1,7 +1,4 @@
 #include "ncbind/ncbind.hpp"
-#ifndef _WIN32
-#include "istream_compat.h"
-#endif
 #include <string>
 #include <vector>
 using namespace std;
