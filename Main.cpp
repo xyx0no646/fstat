@@ -41,6 +41,274 @@ global.FILE_ATTRIBUTE_TEMPORARY = 0x00000100;");
 NCB_TYPECONV_CAST_INTEGER(tjs_uint64);
 #endif
 
+#ifndef tjs_string
+#ifdef _WIN32
+#define tjs_string std::wstring
+#else
+#define tjs_string std::u16string
+#endif
+#endif
+
+//---------------------------------------------------------------------------
+static tjs_int inline TVPWideCharToUtf8_fstat(tjs_char in, char * out)
+{
+	// convert a wide character 'in' to utf-8 character 'out'
+	if     (in < (1<< 7))
+	{
+		if(out)
+		{
+			out[0] = (char)in;
+		}
+		return 1;
+	}
+	else if(in < (1<<11))
+	{
+		if(out)
+		{
+			out[0] = (char)(0xc0 | (in >> 6));
+			out[1] = (char)(0x80 | (in & 0x3f));
+		}
+		return 2;
+	}
+	else if(in < (1<<16))
+	{
+		if(out)
+		{
+			out[0] = (char)(0xe0 | (in >> 12));
+			out[1] = (char)(0x80 | ((in >> 6) & 0x3f));
+			out[2] = (char)(0x80 | (in & 0x3f));
+		}
+		return 3;
+	}
+#if 1
+#if 0
+	else
+	{
+		TVPThrowExceptionMessage( TVPIllegalCharacterConversionUTF16toUTF8 );
+	}
+#endif
+#else
+	// 以下オリジナルのコードだけど、通らないはず。
+	else if(in < (1<<21))
+	{
+		if(out)
+		{
+			out[0] = (char)(0xf0 | (in >> 18));
+			out[1] = (char)(0x80 | ((in >> 12) & 0x3f));
+			out[2] = (char)(0x80 | ((in >> 6 ) & 0x3f));
+			out[3] = (char)(0x80 | (in & 0x3f));
+		}
+		return 4;
+	}
+	else if(in < (1<<26))
+	{
+		if(out)
+		{
+			out[0] = (char)(0xf8 | (in >> 24));
+			out[1] = (char)(0x80 | ((in >> 16) & 0x3f));
+			out[2] = (char)(0x80 | ((in >> 12) & 0x3f));
+			out[3] = (char)(0x80 | ((in >> 6 ) & 0x3f));
+			out[4] = (char)(0x80 | (in & 0x3f));
+		}
+		return 5;
+	}
+	else if(in < (1<<31))
+	{
+		if(out)
+		{
+			out[0] = (char)(0xfc | (in >> 30));
+			out[1] = (char)(0x80 | ((in >> 24) & 0x3f));
+			out[2] = (char)(0x80 | ((in >> 18) & 0x3f));
+			out[3] = (char)(0x80 | ((in >> 12) & 0x3f));
+			out[4] = (char)(0x80 | ((in >> 6 ) & 0x3f));
+			out[5] = (char)(0x80 | (in & 0x3f));
+		}
+		return 6;
+	}
+#endif
+	return -1;
+}
+//---------------------------------------------------------------------------
+static tjs_int TVPWideCharToUtf8String_fstat(const tjs_char *in, char * out)
+{
+	// convert input wide string to output utf-8 string
+	int count = 0;
+	while(*in)
+	{
+		tjs_int n;
+		if(out)
+		{
+			n = TVPWideCharToUtf8_fstat(*in, out);
+			out += n;
+		}
+		else
+		{
+			n = TVPWideCharToUtf8_fstat(*in, NULL);
+				/*
+					in this situation, the compiler's inliner
+					will collapse all null check parts in
+					TVPWideCharToUtf8.
+				*/
+		}
+		if(n == -1) return -1; // invalid character found
+		count += n;
+		in++;
+	}
+	return count;
+}
+//---------------------------------------------------------------------------
+static bool inline TVPUtf8ToWideChar_fstat(const char * & in, tjs_char *out)
+{
+	// convert a utf-8 charater from 'in' to wide charater 'out'
+	const unsigned char * & p = (const unsigned char * &)in;
+	if(p[0] < 0x80)
+	{
+		if(out) *out = (tjs_char)in[0];
+		in++;
+		return true;
+	}
+	else if(p[0] < 0xc2)
+	{
+		// invalid character
+		return false;
+	}
+	else if(p[0] < 0xe0)
+	{
+		// two bytes (11bits)
+		if((p[1] & 0xc0) != 0x80) return false;
+		if(out) *out = ((p[0] & 0x1f) << 6) + (p[1] & 0x3f);
+		in += 2;
+		return true;
+	}
+	else if(p[0] < 0xf0)
+	{
+		// three bytes (16bits)
+		if((p[1] & 0xc0) != 0x80) return false;
+		if((p[2] & 0xc0) != 0x80) return false;
+		if(out) *out = ((p[0] & 0x1f) << 12) + ((p[1] & 0x3f) << 6) + (p[2] & 0x3f);
+		in += 3;
+		return true;
+	}
+	else if(p[0] < 0xf8)
+	{
+		// four bytes (21bits)
+		if((p[1] & 0xc0) != 0x80) return false;
+		if((p[2] & 0xc0) != 0x80) return false;
+		if((p[3] & 0xc0) != 0x80) return false;
+		if(out) *out = ((p[0] & 0x07) << 18) + ((p[1] & 0x3f) << 12) +
+			((p[2] & 0x3f) << 6) + (p[3] & 0x3f);
+		in += 4;
+		return true;
+	}
+	else if(p[0] < 0xfc)
+	{
+		// five bytes (26bits)
+		if((p[1] & 0xc0) != 0x80) return false;
+		if((p[2] & 0xc0) != 0x80) return false;
+		if((p[3] & 0xc0) != 0x80) return false;
+		if((p[4] & 0xc0) != 0x80) return false;
+		if(out) *out = ((p[0] & 0x03) << 24) + ((p[1] & 0x3f) << 18) +
+			((p[2] & 0x3f) << 12) + ((p[3] & 0x3f) << 6) + (p[4] & 0x3f);
+		in += 5;
+		return true;
+	}
+	else if(p[0] < 0xfe)
+	{
+		// six bytes (31bits)
+		if((p[1] & 0xc0) != 0x80) return false;
+		if((p[2] & 0xc0) != 0x80) return false;
+		if((p[3] & 0xc0) != 0x80) return false;
+		if((p[4] & 0xc0) != 0x80) return false;
+		if((p[5] & 0xc0) != 0x80) return false;
+		if(out) *out = ((p[0] & 0x01) << 30) + ((p[1] & 0x3f) << 24) +
+			((p[2] & 0x3f) << 18) + ((p[3] & 0x3f) << 12) +
+			((p[4] & 0x3f) << 6) + (p[5] & 0x3f);
+		in += 6;
+		return true;
+	}
+	return false;
+}
+//---------------------------------------------------------------------------
+static tjs_int TVPUtf8ToWideCharString_fstat(const char * in, tjs_char *out)
+{
+	// convert input utf-8 string to output wide string
+	int count = 0;
+	while(*in)
+	{
+		tjs_char c;
+		if(out)
+		{
+			if(!TVPUtf8ToWideChar_fstat(in, &c))
+				return -1; // invalid character found
+			*out++ = c;
+		}
+		else
+		{
+			if(!TVPUtf8ToWideChar_fstat(in, NULL))
+				return -1; // invalid character found
+		}
+		count ++;
+	}
+	return count;
+}
+//---------------------------------------------------------------------------
+bool TVPUtf8ToUtf16_fstat( tjs_string& out, const std::string& in ) {
+	tjs_int len = TVPUtf8ToWideCharString_fstat( in.c_str(), NULL );
+	if( len < 0 ) return false;
+	tjs_char* buf = new tjs_char[len];
+	if( buf ) {
+		try {
+			len = TVPUtf8ToWideCharString_fstat( in.c_str(), buf );
+			if( len > 0 ) out.assign( buf, len );
+			delete[] buf;
+		} catch(...) {
+			delete[] buf;
+			throw;
+		}
+	}
+	return len > 0;
+}
+//---------------------------------------------------------------------------
+bool TVPUtf16ToUtf8_fstat( std::string& out, const tjs_string& in ) {
+	tjs_int len = TVPWideCharToUtf8String_fstat( in.c_str(), NULL );
+	if( len < 0 ) return false;
+	char* buf = new char[len];
+	if( buf ) {
+		try {
+			len = TVPWideCharToUtf8String_fstat( in.c_str(), buf );
+			if( len > 0 ) out.assign( buf, len );
+			delete[] buf;
+		} catch(...) {
+			delete[] buf;
+			throw;
+		}
+	}
+	return len > 0;
+}
+//---------------------------------------------------------------------------
+
+#define TVPUtf8ToUtf16 TVPUtf8ToUtf16_fstat
+#define TVPUtf16ToUtf8 TVPUtf16ToUtf8_fstat
+
+static bool TJS_USERENTRY _Catch_TVPGetLocalName_fstat(void *data, const tTVPExceptionDesc & desc)
+{
+	ttstr *result = (ttstr*)data;
+	result->Clear();
+	return false;
+}
+static void TJS_USERENTRY _Try_TVPGetLocalName_fstat(void *data)
+{
+	ttstr *name = (ttstr*)data;
+	TVPGetLocalName(*name);
+}
+ttstr TVPGetLocallyAccessibleName_fstat(const ttstr &name)
+{
+	ttstr result(name);
+	TVPDoTryBlock(_Try_TVPGetLocalName_fstat, _Catch_TVPGetLocalName_fstat, NULL, &result);
+	return result;
+}
+
+#define TVPGetLocallyAccessibleName TVPGetLocallyAccessibleName_fstat
 
 /**
  * メソッド追加用
@@ -362,7 +630,8 @@ public:
 		ttstr filename(TVPGetLocallyAccessibleName(TVPGetPlacedPath(target)));
 		if (filename.length()) {
 			std::string nfilename;
-			TVPUtf16ToUtf8( nfilename, filename.AsStdString() );
+			tjs_string wfilename = filename.c_str();
+			TVPUtf16ToUtf8( nfilename, wfilename );
 #if defined(__vita__)
 			SceIoStat file_stat;
 			if (sceIoGetstat(nfilename.c_str(), &file_stat) >= 0)
@@ -399,7 +668,8 @@ public:
 		ttstr filename(TVPGetLocallyAccessibleName(TVPGetPlacedPath(target)));
 		if (filename.length()) {
 			std::string nfilename;
-			TVPUtf16ToUtf8( nfilename, filename.AsStdString() );
+			tjs_string wfilename = filename.c_str();
+			TVPUtf16ToUtf8( nfilename, wfilename );
 #if defined(__vita__)
 			SceIoStat file_stat;
 			if (sceIoGetstat(nfilename.c_str(), &file_stat) >= 0)
@@ -476,7 +746,8 @@ public:
 		ttstr filename(TVPGetLocallyAccessibleName(TVPGetPlacedPath(file)));
 		if (filename.length()) {
 			std::string nfilename;
-			TVPUtf16ToUtf8( nfilename, filename.AsStdString() );
+			tjs_string wfilename = filename.c_str();
+			TVPUtf16ToUtf8( nfilename, wfilename );
 #if defined(__vita__)
 			r = sceIoRemove(nfilename.c_str()) == 0;
 #else
@@ -524,7 +795,8 @@ public:
 		ttstr filename(TVPGetLocallyAccessibleName(TVPGetPlacedPath(file)));
 		if (filename.length()) {
 			std::string nfilename;
-			TVPUtf16ToUtf8( nfilename, filename.AsStdString() );
+			tjs_string wfilename = filename.c_str();
+			TVPUtf16ToUtf8( nfilename, wfilename );
 			r = truncate(nfilename.c_str(), size) == 0;
 		}
 		return r;
@@ -563,9 +835,11 @@ public:
 			&& toFile.length())
 		{
 			std::string nfromFile;
+			tjs_string  wfromFile = fromFile.c_str();
 			std::string   ntoFile;
-			TVPUtf16ToUtf8( nfromFile, fromFile.AsStdString() );
-			TVPUtf16ToUtf8( ntoFile, toFile.AsStdString() );
+			tjs_string    wtoFile = toFile.c_str();
+			TVPUtf16ToUtf8( nfromFile, wfromFile );
+			TVPUtf16ToUtf8( ntoFile, wtoFile );
 #if defined(__vita__)
 			r = sceIoRename(nfromFile.c_str(), ntoFile.c_str()) == 0;
 #else
@@ -657,7 +931,7 @@ private:
 		iTJSDispatch2 * array = TJSCreateArrayObject();
 		tTJSVariant result;
 
-		tjs_string wname(dir.AsStdString());
+		tjs_string wname = dir.c_str();
 		std::string nname;
 		tjs_int icount = 0;
 		if( TVPUtf16ToUtf8(nname, wname) ) {
@@ -813,7 +1087,8 @@ public:
 		TVPGetLocalName(dir);
 
 		std::string ndir;
-		if ( TVPUtf16ToUtf8( ndir, dir.AsStdString() ) )
+		tjs_string wdir = dir.c_str();
+		if ( TVPUtf16ToUtf8( ndir, wdir ) )
 		{
 #if defined(__vita__)
 			return 0 == sceIoRmdir(ndir.c_str());
