@@ -1,5 +1,6 @@
 #include "ncbind/ncbind.hpp"
 #include <string>
+#include <cstring>
 #include <vector>
 using namespace std;
 #ifdef _WIN32
